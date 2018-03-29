@@ -1,27 +1,27 @@
 package org.springframework.security.oauth2.provider.token.store.redis;
 
-import static org.junit.Assert.*;
-
-import java.util.Date;
-import java.util.UUID;
-
-import org.junit.After;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
+import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.oauth2.common.DefaultExpiringOAuth2RefreshToken;
 import org.springframework.security.oauth2.common.DefaultOAuth2AccessToken;
 import org.springframework.security.oauth2.common.DefaultOAuth2RefreshToken;
 import org.springframework.security.oauth2.common.OAuth2AccessToken;
 import org.springframework.security.oauth2.common.OAuth2RefreshToken;
 import org.springframework.security.oauth2.provider.OAuth2Authentication;
+import org.springframework.security.oauth2.provider.OAuth2Request;
 import org.springframework.security.oauth2.provider.RequestTokenFactory;
 import org.springframework.security.oauth2.provider.token.TokenStore;
 import org.springframework.security.oauth2.provider.token.store.TokenStoreBaseTests;
-
+import org.springframework.util.ClassUtils;
 import redis.clients.jedis.JedisShardInfo;
-import redis.embedded.RedisServer;
+
+import java.util.Collection;
+import java.util.Date;
+import java.util.UUID;
+
+import static org.junit.Assert.*;
 
 /**
  * @author efenderbosch
@@ -29,7 +29,6 @@ import redis.embedded.RedisServer;
 public class RedisTokenStoreTests extends TokenStoreBaseTests {
 
 	private RedisTokenStore tokenStore;
-	private RedisServer redisServer;
 
 	@Override
 	public TokenStore getTokenStore() {
@@ -38,20 +37,19 @@ public class RedisTokenStoreTests extends TokenStoreBaseTests {
 
 	@Before
 	public void setup() throws Exception {
-		try {
-			redisServer = new RedisServer();
-		} catch (Exception e) {
-			Assume.assumeNoException("Embedded Redis not starting", e);
-		}
-		redisServer.start();
-		JedisShardInfo shardInfo = new JedisShardInfo("localhost", redisServer.getPort());
-		JedisConnectionFactory connectionFactory = new JedisConnectionFactory(shardInfo);
-		tokenStore = new RedisTokenStore(connectionFactory);
-	}
+		boolean springDataRedis_2_0 = ClassUtils.isPresent(
+				"org.springframework.data.redis.connection.RedisStandaloneConfiguration",
+				this.getClass().getClassLoader());
 
-	@After
-	public void tearDown() throws Exception {
-		redisServer.stop();
+		JedisConnectionFactory connectionFactory;
+		if (springDataRedis_2_0) {
+			connectionFactory = new JedisConnectionFactory();
+		} else {
+			JedisShardInfo shardInfo = new JedisShardInfo("localhost");
+			connectionFactory = new JedisConnectionFactory(shardInfo);
+		}
+
+		tokenStore = new RedisTokenStore(connectionFactory);
 	}
 
 	@Test
@@ -93,6 +91,22 @@ public class RedisTokenStoreTests extends TokenStoreBaseTests {
 		// now it should be gone
 		assertNull(getTokenStore().readAccessToken(accessToken));
 		assertNull(getTokenStore().readAuthentication(expectedOAuth2AccessToken));
+	}
+
+	// gh-572
+	@Test
+	public void storeAccessTokenWithoutRefreshTokenRemoveAccessTokenVerifyTokenRemoved() {
+		OAuth2Request request = RequestTokenFactory.createOAuth2Request("clientId", false);
+		TestingAuthenticationToken authentication = new TestingAuthenticationToken("user", "password");
+
+		OAuth2AccessToken oauth2AccessToken = new DefaultOAuth2AccessToken("access-token-" + UUID.randomUUID());
+		OAuth2Authentication oauth2Authentication = new OAuth2Authentication(request, authentication);
+
+		tokenStore.storeAccessToken(oauth2AccessToken, oauth2Authentication);
+		tokenStore.removeAccessToken(oauth2AccessToken);
+		Collection<OAuth2AccessToken> oauth2AccessTokens = tokenStore.findTokensByClientId(request.getClientId());
+
+		assertTrue(oauth2AccessTokens.isEmpty());
 	}
 
 }

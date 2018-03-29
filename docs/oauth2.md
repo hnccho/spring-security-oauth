@@ -108,18 +108,18 @@ The URL paths provided by the framework are `/oauth/authorize` (the authorizatio
 N.B. the Authorization endpoint `/oauth/authorize` (or its mapped alternative) should be protected using Spring Security so that it is only accessible to authenticated users. For instance using a standard Spring Security `WebSecurityConfigurer`:
 
 ```
-   @Override
-    protected void configure(HttpSecurity http) throws Exception {
-        http
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+	http
             .authorizeRequests().antMatchers("/login").permitAll().and()
         // default protection for all resources (including /oauth/authorize)
             .authorizeRequests()
-                .anyRequest().hasRole("USER")
+            .anyRequest().hasRole("USER")
         // ... more configuration, e.g. for form login
-    }
+}
 ```
 
-> Note: if your Authorization Server is also a Resource Server then there is another security filter chain with lower priority controlling the API resources. Fo those requests to be protected by access tokens you need their paths *not* to be matched by the ones in the main user-facing filter chain, so be sure to include a request matcher that picks out only non-API resources in the `WebSecurityConfigurer` above.
+> Note: if your Authorization Server is also a Resource Server then there is another security filter chain with lower priority controlling the API resources. For those requests to be protected by access tokens you need their paths *not* to be matched by the ones in the main user-facing filter chain, so be sure to include a request matcher that picks out only non-API resources in the `WebSecurityConfigurer` above.
 
 The token endpoint is protected for you by default by Spring OAuth in the `@Configuration` support using HTTP Basic authentication of the client secret. This is not the case in XML (so it should be protected explicitly).
 
@@ -137,11 +137,11 @@ Most of the Authorization Server endpoints are used primarily by machines, but t
 
 ### Enforcing SSL
 
-Plain HTTP is fine for testing but an Authorization Server should only be used over SSL in production. You can run the app in a secure container or behind a proxy and it should work fine if you set the proxy and the container up correctly (which is nothing to do with OAuth2). You might also want to secure the endpoints using Spring Security `requiresChannel()` constraints. For the `/authorize` endpoint is up to you to do that as part of your normal application security. For the `/token` endpoint there is a flag in the `AuthorizationServerEndpointsConfigurer` that you can set using the `sslOnly()` method. In both cases the secure channel setting is optional but will cause Spring Security to redirect to what it thinks is a secure channel if it detects a request on an insecure channel.
+Plain HTTP is fine for testing but an Authorization Server should only be used over SSL in production. You can run the app in a secure container or behind a proxy and it should work fine if you set the proxy and the container up correctly (which is nothing to do with OAuth2). You might also want to secure the endpoints using Spring Security `requiresChannel()` constraints. For the `/authorize` endpoint is up to you to do that as part of your normal application security. For the `/token` endpoint there is a flag in the `AuthorizationServerSecurityConfigurer` that you can set using the `sslOnly()` method. In both cases the secure channel setting is optional but will cause Spring Security to redirect to what it thinks is a secure channel if it detects a request on an insecure channel.
 
 ## Customizing the Error Handling
 
-Error handling in an Authorization Server uses standard Spring MVC features, namely `@ExceptionHandler` methods in the endpoints themselves. Users can also provide a `WebResponseExceptionTranslator` to the endpoints themselves which is the best way to change the content of the responses as opposed to the way they are rendered. The rendering of exceptions delegates to `HttpMesssageConverters` (which can be added to the MVC configuration) in the case of token endpoint and to the OAuth error view (`/oauth/error`) in the case of teh authorization endpoint. The whitelabel error endpoint is provided for HTML responses, but users probably need to provide a custom implementation (e.g. just add a `@Controller` with `@RequestMapping("/oauth/error")`).
+Error handling in an Authorization Server uses standard Spring MVC features, namely `@ExceptionHandler` methods in the endpoints themselves. Users can also provide a `WebResponseExceptionTranslator` to the endpoints themselves which is the best way to change the content of the responses as opposed to the way they are rendered. The rendering of exceptions delegates to `HttpMesssageConverters` (which can be added to the MVC configuration) in the case of token endpoint and to the OAuth error view (`/oauth/error`) in the case of the authorization endpoint. The whitelabel error endpoint is provided for HTML responses, but users probably need to provide a custom implementation (e.g. just add a `@Controller` with `@RequestMapping("/oauth/error")`).
 
 ## Mapping User Roles to Scopes
 
@@ -153,7 +153,7 @@ A Resource Server (can be the same as the Authorization Server or a separate app
 
 * `tokenServices`: the bean that defines the token services (instance of `ResourceServerTokenServices`).
 * `resourceId`: the id for the resource (optional, but recommended and will be validated by the auth server if present).
-* other extension points for the resourecs server (e.g. `tokenExtractor` for extracting the tokens from incoming requests)
+* other extension points for the resources server (e.g. `tokenExtractor` for extracting the tokens from incoming requests)
 * request matchers for protected resources (defaults to all)
 * access rules for protected resources (defaults to plain "authenticated")
 * other customizations for the protected resources permitted by the `HttpSecurity` configurer in Spring Security
@@ -165,11 +165,11 @@ In XML there is a `<resource-server/>` element with an `id` attribute - this is 
 Your `ResourceServerTokenServices` is the other half of a contract with the Authorization Server. If the Resource Server and Authorization Server are in the same application and you use `DefaultTokenServices` then you don't have to think too hard about this because it implements all the necessary interfaces so it is automatically consistent. If your Resource Server is a separate application then you have to make sure you match the capabilities of the Authorization Server and provide a `ResourceServerTokenServices` that knows how to decode the tokens correctly. As with the Authorization Server, you can often use the `DefaultTokenServices` and the choices are mostly expressed through the `TokenStore` (backend storage or local encoding). An alternative is the `RemoteTokenServices` which is a Spring OAuth features (not part of the spec) allowing Resource Servers to decode tokens through an HTTP resource on the Authorization Server (`/oauth/check_token`). `RemoteTokenServices` are convenient if there is not a huge volume of traffic in the Resource Servers (every request has to be verified with the Authorization Server), or if you can afford to cache the results. To use the `/oauth/check_token` endpoint you need to expose it by changing its access rule (default is "denyAll()") in the `AuthorizationServerSecurityConfigurer`, e.g.
 
 ```
-		@Override
-		public void configure(AuthorizationServerSecurityConfigurer oauthServer) throws Exception {
-			oauthServer.tokenKeyAccess("isAnonymous() || hasAuthority('ROLE_TRUSTED_CLIENT')").checkTokenAccess(
-					"hasAuthority('ROLE_TRUSTED_CLIENT')");
-		}
+@Override
+public void configure(AuthorizationServerSecurityConfigurer oauthServer) throws Exception {
+	oauthServer.tokenKeyAccess("isAnonymous() || hasAuthority('ROLE_TRUSTED_CLIENT')")
+	.checkTokenAccess("hasAuthority('ROLE_TRUSTED_CLIENT')");
+}
 
 ```
 

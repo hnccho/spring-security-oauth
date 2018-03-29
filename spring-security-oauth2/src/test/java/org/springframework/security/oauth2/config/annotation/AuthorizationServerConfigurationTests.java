@@ -12,18 +12,6 @@
  */
 package org.springframework.security.oauth2.config.annotation;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import javax.sql.DataSource;
-
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -40,6 +28,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.servlet.configuration.EnableWebMvcSecurity;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.userdetails.User;
@@ -47,12 +36,15 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.jwt.crypto.sign.MacSigner;
+import org.springframework.security.oauth2.common.exceptions.OAuth2Exception;
 import org.springframework.security.oauth2.config.annotation.configurers.ClientDetailsServiceConfigurer;
 import org.springframework.security.oauth2.config.annotation.web.configuration.AuthorizationServerConfigurerAdapter;
 import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
 import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerEndpointsConfigurer;
 import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerSecurityConfigurer;
 import org.springframework.security.oauth2.provider.AuthorizationRequest;
+import org.springframework.security.oauth2.provider.ClientDetails;
 import org.springframework.security.oauth2.provider.ClientDetailsService;
 import org.springframework.security.oauth2.provider.OAuth2RequestFactory;
 import org.springframework.security.oauth2.provider.approval.DefaultUserApprovalHandler;
@@ -62,6 +54,7 @@ import org.springframework.security.oauth2.provider.client.ClientCredentialsToke
 import org.springframework.security.oauth2.provider.client.InMemoryClientDetailsService;
 import org.springframework.security.oauth2.provider.endpoint.AuthorizationEndpoint;
 import org.springframework.security.oauth2.provider.endpoint.CheckTokenEndpoint;
+import org.springframework.security.oauth2.provider.endpoint.RedirectResolver;
 import org.springframework.security.oauth2.provider.endpoint.TokenEndpoint;
 import org.springframework.security.oauth2.provider.error.DefaultWebResponseExceptionTranslator;
 import org.springframework.security.oauth2.provider.token.AuthorizationServerTokenServices;
@@ -74,6 +67,14 @@ import org.springframework.security.oauth2.provider.token.store.JwtTokenStore;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
 import org.springframework.web.servlet.handler.HandlerInterceptorAdapter;
+
+import javax.sql.DataSource;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.Assert.*;
 
 /**
  * @author Dave Syer
@@ -100,6 +101,7 @@ public class AuthorizationServerConfigurationTests {
 				new Object[] { null, new Class<?>[] { AuthorizationServerJdbc.class } },
 				new Object[] { null, new Class<?>[] { AuthorizationServerEncoder.class } },
 				new Object[] { null, new Class<?>[] { AuthorizationServerJwt.class } },
+				new Object[] { null, new Class<?>[] { AuthorizationServerJwtCustomSigner.class } },
 				new Object[] { null, new Class<?>[] { AuthorizationServerWithTokenServices.class } },
 				new Object[] { null, new Class<?>[] { AuthorizationServerApproval.class } },
 				new Object[] { null, new Class<?>[] { AuthorizationServerExceptionTranslator.class } },
@@ -107,7 +109,10 @@ public class AuthorizationServerConfigurationTests {
 				new Object[] { null, new Class<?>[] { AuthorizationServerAllowsSpecificRequestMethods.class } },
 				new Object[] { null, new Class<?>[] { AuthorizationServerAllowsOnlyPost.class } },
 				new Object[] { BeanCreationException.class, new Class<?>[] { AuthorizationServerTypes.class } },
-				new Object[] { null, new Class<?>[] { AuthorizationServerCustomGranter.class } }
+				new Object[] { null, new Class<?>[] { AuthorizationServerCustomGranter.class } },
+				new Object[] { null, new Class<?>[] { AuthorizationServerSslEnabled.class } },
+				new Object[] { null, new Class<?>[] { AuthorizationServerCustomRedirectResolver.class } },
+				new Object[] { null, new Class<?>[] { AuthorizationServerDefaultRedirectResolver.class } }
 		// @formatter:on
 		);
 	}
@@ -367,9 +372,6 @@ public class AuthorizationServerConfigurationTests {
 	@EnableAuthorizationServer
 	protected static class AuthorizationServerJdbc extends AuthorizationServerConfigurerAdapter {
 
-		@Autowired
-		private ApplicationContext context;
-
 		@Override
 		public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
 			endpoints.tokenStore(new JdbcTokenStore(dataSource()));
@@ -427,6 +429,39 @@ public class AuthorizationServerConfigurationTests {
 		@Bean
 		protected JwtAccessTokenConverter jwtTokenEnhancer() {
 			return new JwtAccessTokenConverter();
+		}
+
+		@Override
+		public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+			// @formatter:off
+			clients.inMemory().withClient("my-trusted-client").authorizedGrantTypes("password");
+			// @formatter:on
+		}
+
+	}
+
+	@Configuration
+	@EnableWebMvcSecurity
+	@EnableAuthorizationServer
+	protected static class AuthorizationServerJwtCustomSigner extends AuthorizationServerConfigurerAdapter {
+
+		@Override
+		public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+			endpoints.tokenStore(tokenStore()).tokenEnhancer(jwtTokenEnhancer());
+		}
+
+		@Bean
+		public TokenStore tokenStore() {
+			return new JwtTokenStore(jwtTokenEnhancer());
+		}
+
+		@Bean
+		protected JwtAccessTokenConverter jwtTokenEnhancer() {
+			JwtAccessTokenConverter converter = new JwtAccessTokenConverter();
+			MacSigner verifier = new MacSigner("foobar");
+			converter.setSigner(verifier);
+			converter.setVerifier(verifier);
+			return converter;
 		}
 
 		@Override
@@ -515,6 +550,51 @@ public class AuthorizationServerConfigurationTests {
 
 	}
 
+	@EnableWebSecurity
+	@EnableAuthorizationServer
+	protected static class AuthorizationServerCustomRedirectResolver extends AuthorizationServerConfigurerAdapter
+			implements Runnable {
+
+		@Autowired
+		private ApplicationContext context;
+
+		@Override
+		public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+			endpoints.redirectResolver(new CustomRedirectResolver());
+		}
+
+		@Override
+		public void run() {
+			RedirectResolver resolver = (RedirectResolver) ReflectionTestUtils.getField(context.getBean(AuthorizationEndpoint.class), "redirectResolver");
+
+			assertNotNull(resolver);
+			assertTrue(resolver instanceof CustomRedirectResolver);
+		}
+
+		static class CustomRedirectResolver implements RedirectResolver {
+			@Override
+			public String resolveRedirect(final String requestedRedirect, final ClientDetails client) throws OAuth2Exception {
+				return "go/here";
+			}
+		}
+	}
+
+	@EnableWebSecurity
+	@EnableAuthorizationServer
+	protected static class AuthorizationServerDefaultRedirectResolver extends AuthorizationServerConfigurerAdapter
+			implements Runnable {
+
+		@Autowired
+		private ApplicationContext context;
+
+		@Override
+		public void run() {
+			assertNotNull(
+					ReflectionTestUtils.getField(context.getBean(AuthorizationEndpoint.class), "redirectResolver"));
+		}
+
+	}
+
 	@Configuration
 	@EnableWebMvcSecurity
 	@EnableAuthorizationServer
@@ -589,6 +669,7 @@ public class AuthorizationServerConfigurationTests {
 
 		@Override
 		public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+			assertTrue(tokenServices!=null && clientDetailsService!=null && requestFactory!=null);
 		}
 
 	}
@@ -645,4 +726,14 @@ public class AuthorizationServerConfigurationTests {
 
 	}
 
+	// gh-638
+	@EnableWebSecurity
+	@EnableAuthorizationServer
+	protected static class AuthorizationServerSslEnabled extends AuthorizationServerConfigurerAdapter {
+
+		@Override
+		public void configure(AuthorizationServerSecurityConfigurer security) throws Exception {
+			security.sslOnly();
+		}
+	}
 }

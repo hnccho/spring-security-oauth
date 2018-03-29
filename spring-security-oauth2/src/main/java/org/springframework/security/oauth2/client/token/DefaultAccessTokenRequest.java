@@ -15,16 +15,12 @@
  */
 package org.springframework.security.oauth2.client.token;
 
-import java.io.Serializable;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import org.springframework.security.oauth2.common.OAuth2AccessToken;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+
+import java.io.Serializable;
+import java.util.*;
 
 /**
  * Local context for an access token request encapsulating the parameters that are sent by the client requesting the
@@ -137,6 +133,18 @@ public class DefaultAccessTokenRequest implements AccessTokenRequest, Serializab
 
 	public void add(String key, String value) {
 		parameters.add(key, value);
+	}
+
+	public void addAll(String key, List<? extends String> values) {
+		for (String value : values) {
+			this.add(key, value);
+		}
+	}
+
+	public void addAll(MultiValueMap<String, String> map) {
+		for (Entry<String, List<String>> entry : map.entrySet()) {
+			this.addAll(entry.getKey(), entry.getValue());
+		}
 	}
 
 	public void set(String key, String value) {

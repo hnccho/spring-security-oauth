@@ -5,6 +5,10 @@ This project provides support for using Spring Security with OAuth
 and providers of these protocols using standard Spring and Spring
 Security programming models and configuration idioms.
 
+# Code of Conduct
+This project adheres to the Contributor Covenant [code of conduct](CODE_OF_CONDUCT.adoc).
+By participating, you  are expected to uphold this code. Please report unacceptable behavior to spring-code-of-conduct@pivotal.io.
+
 # Getting Started
 
 [Download](https://github.com/spring-projects/spring-security-oauth/tags)
@@ -18,6 +22,10 @@ use Maven (3.0.\*) and Java (1.6 or better):
 Use the `bootstrap` profile only the first time - it enables some
 repositories that can't be exposed in the poms by default. You may
 find it useful to add this profile to your local `settings.xml`.
+
+You need to run Redis to get the build to work.  You can install this 
+using homebrew.  Without Redis running the build will lots of Jedis
+connection exceptions
 
 SpringSource ToolSuite users (or Eclipse users with the latest
 m2eclipse plugin) can import the projects as existing Maven projects.
